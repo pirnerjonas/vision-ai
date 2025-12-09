@@ -1,0 +1,1 @@
+Mask2Former seems not be able to handle empty annotations out of the box
