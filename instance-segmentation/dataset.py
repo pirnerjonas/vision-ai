@@ -25,7 +25,7 @@ class YOLOSegmentationDataset(Dataset):
         self.labels_dir = self.dataset_root / "labels" / split
         
         # Get all image files
-        self.image_files = sorted([f for f in self.images_dir.glob("*.bmp")])
+        self.image_files = sorted([f for f in self.images_dir.glob("*.jpg")])
         
     def __len__(self):
         return len(self.image_files)

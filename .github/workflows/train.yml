@@ -1,0 +1,38 @@
+name: Train Model
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        lfs: true
+    
+    - name: Checkout LFS objects
+      run: git lfs pull
+      
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        enable-cache: true
+        
+    - name: Set up Python
+      run: uv python install 3.12
+        
+    - name: Install dependencies
+      run: uv sync
+    
+    - name: Run training
+      run: |
+        cd instance-segmentation
+        uv run python train.py

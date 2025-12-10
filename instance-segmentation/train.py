@@ -9,7 +9,7 @@ from torchmetrics.detection.mean_ap import MeanAveragePrecision
 
 # Configuration
 CONFIG = {
-    "dataset_path": "/home/jonas/Projects/vision-ai/datasets/yolo/housing-segmentation",
+    "dataset_path": "../datasets/yolo/donut",
     "model_name": "facebook/mask2former-swin-tiny-coco-instance",
     "batch_size": 2,
     "num_epochs": 10,
@@ -140,14 +140,14 @@ def train():
         batch_size=CONFIG["batch_size"],
         shuffle=True,
         collate_fn=collate_fn,
-        num_workers=2,
+        num_workers=0,
     )
     val_loader = DataLoader(
         val_dataset,
         batch_size=CONFIG["batch_size"],
         shuffle=False,
         collate_fn=collate_fn,
-        num_workers=2,
+        num_workers=0,
     )
     
     # Optimizer
