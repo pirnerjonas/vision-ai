@@ -9,5 +9,5 @@ wheels/
 # Virtual environments
 .venv
 
-datasets/
-*.jpg
+datasets/yolo/baseplate-detection
+datasets/yolo/housing-segmentation
