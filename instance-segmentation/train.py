@@ -1,11 +1,10 @@
 from pathlib import Path
-import torch
-from torch.utils.data import DataLoader
-from transformers import AutoModelForUniversalSegmentation, AutoImageProcessor
-from dataset import YOLOSegmentationDataset
-import numpy as np
-from torchmetrics.detection.mean_ap import MeanAveragePrecision
 
+import torch
+from dataset import YOLOSegmentationDataset
+from torch.utils.data import DataLoader
+from torchmetrics.detection.mean_ap import MeanAveragePrecision
+from transformers import AutoImageProcessor, AutoModelForUniversalSegmentation
 
 # Configuration
 CONFIG = {
@@ -24,7 +23,7 @@ def collate_fn(batch):
     pixel_values = torch.stack([item["pixel_values"] for item in batch])
     mask_labels = [item["mask_labels"] for item in batch]
     class_labels = [item["class_labels"] for item in batch]
-    
+
     return {
         "pixel_values": pixel_values,
         "mask_labels": mask_labels,
@@ -36,15 +35,15 @@ def compute_metrics(model, image_processor, dataloader, device):
     """Compute mAP metrics for instance segmentation."""
     metric = MeanAveragePrecision(iou_type="segm")
     model.eval()
-    
+
     with torch.no_grad():
         for batch in dataloader:
             # Move pixel_values to device
             pixel_values = batch["pixel_values"].to(device)
-            
+
             # Forward pass
             outputs = model(pixel_values=pixel_values)
-            
+
             # Prepare targets - handle empty masks for background-only images
             target_sizes = []
             for mask in batch["mask_labels"]:
@@ -53,7 +52,7 @@ def compute_metrics(model, image_processor, dataloader, device):
                 else:
                     # For empty masks, use the original image size from pixel_values
                     target_sizes.append((pixel_values.shape[2], pixel_values.shape[3]))
-            
+
             # Post-process predictions
             post_processed = image_processor.post_process_instance_segmentation(
                 outputs,
@@ -61,39 +60,56 @@ def compute_metrics(model, image_processor, dataloader, device):
                 target_sizes=target_sizes,
                 return_binary_maps=True,
             )
-            
+
             # Collect predictions and targets
             predictions = []
             targets = []
-            
+
             for i, (pred, target_masks, target_labels) in enumerate(
-                zip(post_processed, batch["mask_labels"], batch["class_labels"])
+                zip(
+                    post_processed,
+                    batch["mask_labels"],
+                    batch["class_labels"],
+                    strict=False,
+                )
             ):
                 # Predictions
                 if pred["segments_info"]:
-                    predictions.append({
-                        "masks": pred["segmentation"].to(dtype=torch.bool),
-                        "labels": torch.tensor([x["label_id"] for x in pred["segments_info"]]),
-                        "scores": torch.tensor([x["score"] for x in pred["segments_info"]]),
-                    })
+                    predictions.append(
+                        {
+                            "masks": pred["segmentation"].to(dtype=torch.bool),
+                            "labels": torch.tensor(
+                                [x["label_id"] for x in pred["segments_info"]]
+                            ),
+                            "scores": torch.tensor(
+                                [x["score"] for x in pred["segments_info"]]
+                            ),
+                        }
+                    )
                 else:
                     target_size = target_sizes[i]
-                    predictions.append({
-                        "masks": torch.zeros([0, *target_size], dtype=torch.bool),
-                        "labels": torch.tensor([]),
-                        "scores": torch.tensor([]),
-                    })
-                
+                    predictions.append(
+                        {
+                            "masks": torch.zeros([0, *target_size], dtype=torch.bool),
+                            "labels": torch.tensor([]),
+                            "scores": torch.tensor([]),
+                        }
+                    )
+
                 # Targets
-                targets.append({
-                    "masks": target_masks.to(dtype=torch.bool),
-                    "labels": target_labels,
-                })
-            
+                targets.append(
+                    {
+                        "masks": target_masks.to(dtype=torch.bool),
+                        "labels": target_labels,
+                    }
+                )
+
             metric.update(predictions, targets)
-    
+
     metrics = metric.compute()
-    return {k: round(v.item(), 4) for k, v in metrics.items() if not k.endswith("per_class")}
+    return {
+        k: round(v.item(), 4) for k, v in metrics.items() if not k.endswith("per_class")
+    }
 
 
 def train():
@@ -101,18 +117,18 @@ def train():
     output_dir.mkdir(parents=True, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
-    
+
     # Load image processor
     image_processor = AutoImageProcessor.from_pretrained(
         CONFIG["model_name"],
         do_resize=True,
         size={"height": 512, "width": 512},
     )
-    
+
     # Create label mappings
     label2id = {"bodenplatte": 0}
     id2label = {0: "bodenplatte"}
-    
+
     # Load model
     model = AutoModelForUniversalSegmentation.from_pretrained(
         CONFIG["model_name"],
@@ -121,20 +137,18 @@ def train():
         ignore_mismatched_sizes=True,
     )
     model.to(device)
-    
+
     # Load datasets with image processor and augmentation for training
     train_dataset = YOLOSegmentationDataset(
-        CONFIG["dataset_path"], 
+        CONFIG["dataset_path"],
         split="train",
         image_processor=image_processor,
-        augment=True  # Enable augmentation for training
+        augment=True,  # Enable augmentation for training
     )
     val_dataset = YOLOSegmentationDataset(
-        CONFIG["dataset_path"], 
-        split="valid",
-        image_processor=image_processor
+        CONFIG["dataset_path"], split="valid", image_processor=image_processor
     )
-    
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=CONFIG["batch_size"],
@@ -149,23 +163,26 @@ def train():
         collate_fn=collate_fn,
         num_workers=0,
     )
-    
+
     # Optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr=CONFIG["learning_rate"])
-    
-    print(f"Training samples: {len(train_dataset)}, Validation samples: {len(val_dataset)}")
-    
+
+    print(
+        f"Training samples: {len(train_dataset)}, "
+        f"Validation samples: {len(val_dataset)}"
+    )
+
     # Training loop
     for epoch in range(CONFIG["num_epochs"]):
         model.train()
         train_loss = 0.0
-        
+
         for batch_idx, batch in enumerate(train_loader):
             # Move to device
             pixel_values = batch["pixel_values"].to(device)
             mask_labels = [m.to(device) for m in batch["mask_labels"]]
             class_labels = [c.to(device) for c in batch["class_labels"]]
-            
+
             # Forward pass
             outputs = model(
                 pixel_values=pixel_values,
@@ -173,39 +190,47 @@ def train():
                 class_labels=class_labels,
             )
             loss = outputs.loss
-            
+
             # Backward pass
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            
+
             train_loss += loss.item()
-            
+
             if (batch_idx + 1) % 5 == 0:
-                print(f"Epoch [{epoch+1}/{CONFIG['num_epochs']}], "
-                      f"Batch [{batch_idx+1}/{len(train_loader)}], "
-                      f"Loss: {loss.item():.4f}")
-        
+                print(
+                    f"Epoch [{epoch + 1}/{CONFIG['num_epochs']}], "
+                    f"Batch [{batch_idx + 1}/{len(train_loader)}], "
+                    f"Loss: {loss.item():.4f}"
+                )
+
         avg_train_loss = train_loss / len(train_loader)
-        print(f"Epoch [{epoch+1}/{CONFIG['num_epochs']}] - Avg Train Loss: {avg_train_loss:.4f}")
-        
+        print(
+            f"Epoch [{epoch + 1}/{CONFIG['num_epochs']}] - "
+            f"Avg Train Loss: {avg_train_loss:.4f}"
+        )
+
         # Validation
         if (epoch + 1) % 5 == 0:
             print("Running validation...")
             metrics = compute_metrics(model, image_processor, val_loader, device)
             print(f"Validation Metrics: {metrics}")
-        
+
         # Save checkpoint
         if (epoch + 1) % CONFIG["save_every"] == 0:
-            checkpoint_path = output_dir / f"checkpoint_epoch_{epoch+1}.pt"
-            torch.save({
-                'epoch': epoch + 1,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'train_loss': avg_train_loss,
-            }, checkpoint_path)
+            checkpoint_path = output_dir / f"checkpoint_epoch_{epoch + 1}.pt"
+            torch.save(
+                {
+                    "epoch": epoch + 1,
+                    "model_state_dict": model.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "train_loss": avg_train_loss,
+                },
+                checkpoint_path,
+            )
             print(f"Checkpoint saved: {checkpoint_path}")
-    
+
     # Save final model
     final_path = output_dir / "final_model"
     model.save_pretrained(final_path)
