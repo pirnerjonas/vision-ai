@@ -26,6 +26,17 @@ jobs:
         
     - name: Install dependencies
       run: uv sync
+    
+    - name: Verify dataset exists
+      run: |
+        echo "Checking dataset structure..."
+        ls -la datasets/yolo/donut/
+        echo "Train images:"
+        ls -la datasets/yolo/donut/images/train/ | head -10
+        echo "Train labels:"
+        ls -la datasets/yolo/donut/labels/train/ | head -10
+        echo "Dataset YAML:"
+        cat datasets/yolo/donut/donut.yaml
         
     - name: Run training
       run: |
