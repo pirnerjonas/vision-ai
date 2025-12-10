@@ -140,14 +140,14 @@ def train():
         batch_size=CONFIG["batch_size"],
         shuffle=True,
         collate_fn=collate_fn,
-        num_workers=2,
+        num_workers=0,
     )
     val_loader = DataLoader(
         val_dataset,
         batch_size=CONFIG["batch_size"],
         shuffle=False,
         collate_fn=collate_fn,
-        num_workers=2,
+        num_workers=0,
     )
     
     # Optimizer
