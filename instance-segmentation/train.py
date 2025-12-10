@@ -7,13 +7,9 @@ import numpy as np
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 
 
-# Resolve dataset path relative to this script's location
-SCRIPT_DIR = Path(__file__).parent
-DATASET_PATH = (SCRIPT_DIR / "../datasets/yolo/donut").resolve()
-
 # Configuration
 CONFIG = {
-    "dataset_path": str(DATASET_PATH),
+    "dataset_path": "../datasets/yolo/donut",
     "model_name": "facebook/mask2former-swin-tiny-coco-instance",
     "batch_size": 2,
     "num_epochs": 10,
