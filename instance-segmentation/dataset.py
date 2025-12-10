@@ -4,15 +4,22 @@ from torch.utils.data import Dataset
 from PIL import Image
 import cv2
 import numpy as np
+import torchvision.transforms as transforms
+import torchvision.transforms.functional as TF
+import random
 
 
 class YOLOSegmentationDataset(Dataset):
     """YOLO polygon format dataset for Mask2Former instance segmentation."""
     
-    def __init__(self, dataset_root, split="train", image_processor=None):
+    def __init__(self, dataset_root, split="train", image_processor=None, augment=False):
         self.dataset_root = Path(dataset_root)
         self.split = split
         self.image_processor = image_processor
+        self.augment = augment
+        
+        # Define augmentation pipeline
+        self.augment = augment
         
         self.images_dir = self.dataset_root / "images" / split
         self.labels_dir = self.dataset_root / "labels" / split
@@ -108,6 +115,29 @@ class YOLOSegmentationDataset(Dataset):
                         # Map instance ID to semantic class ID
                         instance_id_to_semantic_id[instance_id] = class_id
                         instance_id += 1
+        
+        # Apply augmentations if enabled (before processing)
+        if self.augment:
+            # Random horizontal flip
+            if random.random() > 0.5:
+                image = TF.hflip(image)
+                instance_mask = np.fliplr(instance_mask)
+            
+            # Random vertical flip
+            if random.random() > 0.5:
+                image = TF.vflip(image)
+                instance_mask = np.flipud(instance_mask)
+            
+            # Random rotation
+            angle = random.uniform(-15, 15)
+            image = TF.rotate(image, angle, interpolation=TF.InterpolationMode.BILINEAR)
+            # Rotate mask using PIL
+            mask_pil = Image.fromarray(instance_mask.astype(np.uint8))
+            mask_pil = TF.rotate(mask_pil, angle, interpolation=TF.InterpolationMode.NEAREST)
+            instance_mask = np.array(mask_pil)
+            
+            # Color jitter (only affects image, not mask)
+            image = transforms.ColorJitter(brightness=0.5, contrast=0.3, saturation=0.5, hue=0.1)(image)
         
         # Process with image processor
         if self.image_processor:

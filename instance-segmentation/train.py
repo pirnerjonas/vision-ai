@@ -122,11 +122,12 @@ def train():
     )
     model.to(device)
     
-    # Load datasets with image processor
+    # Load datasets with image processor and augmentation for training
     train_dataset = YOLOSegmentationDataset(
         CONFIG["dataset_path"], 
         split="train",
-        image_processor=image_processor
+        image_processor=image_processor,
+        augment=True  # Enable augmentation for training
     )
     val_dataset = YOLOSegmentationDataset(
         CONFIG["dataset_path"], 
