@@ -9,7 +9,7 @@ from transformers import AutoImageProcessor
 
 # Configuration
 CONFIG = {
-    "dataset_path": "/home/jonas/Projects/vision-ai/datasets/yolo/housing-segmentation",
+    "dataset_path": "../datasets/yolo/crack",
     "split": "train",  # Can be "train", "valid", or "test"
     "output_dir": "./visualizations",
     "num_samples": 10,  # Number of samples to visualize

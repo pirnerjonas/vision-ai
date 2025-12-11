@@ -14,7 +14,12 @@ class YOLOSegmentationDataset(Dataset):
     """YOLO polygon format dataset for Mask2Former instance segmentation."""
 
     def __init__(
-        self, dataset_root, split="train", image_processor=None, augment=False
+        self,
+        dataset_root,
+        split="train",
+        image_processor=None,
+        augment=False,
+        image_extensions=None,
     ):
         self.dataset_root = Path(dataset_root)
         self.split = split
@@ -24,11 +29,19 @@ class YOLOSegmentationDataset(Dataset):
         # Define augmentation pipeline
         self.augment = augment
 
+        # Support multiple image extensions
+        if image_extensions is None:
+            image_extensions = [".jpg", ".jpeg", ".png"]
+        self.image_extensions = image_extensions
+
         self.images_dir = self.dataset_root / "images" / split
         self.labels_dir = self.dataset_root / "labels" / split
 
-        # Get all image files
-        self.image_files = sorted([f for f in self.images_dir.glob("*.jpg")])
+        # Get all image files with supported extensions
+        self.image_files = []
+        for ext in self.image_extensions:
+            self.image_files.extend(self.images_dir.glob(f"*{ext}"))
+        self.image_files = sorted(self.image_files)
 
     def __len__(self):
         return len(self.image_files)

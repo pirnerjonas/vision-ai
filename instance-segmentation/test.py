@@ -8,8 +8,8 @@ from transformers import AutoImageProcessor, AutoModelForUniversalSegmentation
 
 # Configuration
 CONFIG = {
-    "model_path": "./outputs/final_model",
-    "dataset_path": "../datasets/yolo/donut",
+    "model_path": "./outputs",
+    "dataset_path": "../datasets/yolo/crack",
     "output_dir": "./predictions",
 }
 

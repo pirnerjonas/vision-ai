@@ -13,7 +13,24 @@ from transformers import (
 
 # Resolve dataset path relative to this script
 SCRIPT_DIR = Path(__file__).parent
-DATASET_PATH = (SCRIPT_DIR / "../datasets/yolo/donut").resolve()
+
+# ==================== DATASET CONFIGURATION ====================
+# Switch between datasets by changing ACTIVE_DATASET
+DATASETS = {
+    "donut": {
+        "path": (SCRIPT_DIR / "../datasets/yolo/donut").resolve(),
+        "label2id": {"donut": 0},
+        "image_extensions": [".jpg"],
+    },
+    "crack": {
+        "path": (SCRIPT_DIR / "../datasets/yolo/crack").resolve(),
+        "label2id": {"crack": 0},
+        "image_extensions": [".jpg"],
+    },
+}
+
+ACTIVE_DATASET = "crack"  # Change this to switch datasets
+# ===============================================================
 
 # Configuration
 CONFIG = {
@@ -52,14 +69,26 @@ class Evaluator:
         predictions, labels = eval_pred
 
         # predictions is a tuple of (class_queries_logits, masks_queries_logits)
-        # from model forward pass
         class_queries_logits = torch.from_numpy(predictions[0])
         masks_queries_logits = torch.from_numpy(predictions[1])
 
         mask_labels, class_labels = labels
 
-        # Prepare target sizes
-        target_sizes = [masks[0].shape[-2:] for masks in mask_labels]
+        # The batch dimension in predictions is the total accumulated batches
+        # We need to match it with the actual number of labels
+        batch_size = len(mask_labels)
+
+        # Slice predictions to match the number of labels
+        class_queries_logits = class_queries_logits[:batch_size]
+        masks_queries_logits = masks_queries_logits[:batch_size]
+
+        # Prepare target sizes from mask labels
+        target_sizes = []
+        for masks in mask_labels:
+            if len(masks) > 0:
+                target_sizes.append(tuple(masks[0].shape[-2:]))
+            else:
+                target_sizes.append((512, 512))
 
         # Wrap outputs in ModelOutput dataclass
         model_outputs = ModelOutput(
@@ -80,7 +109,7 @@ class Evaluator:
         formatted_targets = []
 
         for pred, target_masks, target_labels, target_size in zip(
-            post_processed, mask_labels, class_labels, target_sizes, strict=True
+            post_processed, mask_labels, class_labels, target_sizes, strict=False
         ):
             if pred["segments_info"]:
                 formatted_predictions.append(
@@ -143,9 +172,16 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # Label mappings
-    label2id = {"donut": 0}
-    id2label = {0: "donut"}
+    # Get active dataset configuration
+    dataset_config = DATASETS[ACTIVE_DATASET]
+    dataset_path = dataset_config["path"]
+    label2id = dataset_config["label2id"]
+    id2label = {v: k for k, v in label2id.items()}
+    image_extensions = dataset_config["image_extensions"]
+
+    print(f"Active dataset: {ACTIVE_DATASET}")
+    print(f"Dataset path: {dataset_path}")
+    print(f"Classes: {list(label2id.keys())}")
 
     # Load model and image processor
     model = AutoModelForUniversalSegmentation.from_pretrained(
@@ -163,17 +199,19 @@ def main():
 
     # Load datasets
     train_dataset = YOLOSegmentationDataset(
-        str(DATASET_PATH),
+        str(dataset_path),
         split="train",
         image_processor=image_processor,
         augment=True,
+        image_extensions=image_extensions,
     )
 
     val_dataset = YOLOSegmentationDataset(
-        str(DATASET_PATH),
+        str(dataset_path),
         split="valid",
         image_processor=image_processor,
         augment=False,
+        image_extensions=image_extensions,
     )
 
     print(
