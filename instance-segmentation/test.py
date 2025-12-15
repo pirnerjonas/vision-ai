@@ -40,148 +40,94 @@ class InstanceSegmentationModel(ABC):
             dataset: supervision DetectionDataset
 
         Returns:
-            Dictionary of metrics (mAP, AR, precision, recall, F1, etc.)
+            Dictionary with map_50, mar_50, pixel_iou, pixel_dice,
+            pixel_precision, pixel_recall
         """
+        from torchmetrics import MetricCollection
+        from torchmetrics.classification import (
+            BinaryJaccardIndex,
+            BinaryPrecision,
+            BinaryRecall,
+        )
         from torchmetrics.detection.mean_ap import MeanAveragePrecision
 
-        # Compute metrics at different IoU thresholds
-        metric_iou50 = MeanAveragePrecision(
-            iou_type="segm", iou_thresholds=[0.5], class_metrics=True
+        # Initialize metric collections
+        instance_metrics = MetricCollection(
+            {
+                "map_50": MeanAveragePrecision(iou_type="segm", iou_thresholds=[0.5]),
+            }
         )
-        metric_all = MeanAveragePrecision(iou_type="segm", class_metrics=True)
-        predictions = []
-        targets = []
+        pixel_metrics = MetricCollection(
+            {
+                "pixel_iou": BinaryJaccardIndex(),
+                "pixel_precision": BinaryPrecision(),
+                "pixel_recall": BinaryRecall(),
+            }
+        )
 
-        # Additional metrics for better understanding
-        total_pred_masks = 0
-        total_gt_masks = 0
-        matched_at_50 = 0  # Count matches at IoU ≥ 0.5
+        # Collect data
+        instance_preds, instance_targets = [], []
+        pixel_preds, pixel_targets = [], []
 
-        # Pixel-level metrics (ignore instance boundaries)
-        all_pred_pixels = []
-        all_gt_pixels = []
-
-        for image_path in dataset.image_paths:
-            # Load and predict
-            image = Image.open(image_path).convert("RGB")
+        for _, image, annotations in dataset:
             detections = self.predict(image)
 
-            # Get ground truth annotations
-            annotations = dataset.annotations[image_path]
+            h, w = image.shape[:2]
+            num_dets = len(detections)
+            num_gts = len(annotations) if annotations.mask is not None else 0
 
-            # Count for additional metrics
-            total_pred_masks += len(detections) if len(detections) > 0 else 0
-            gt_count = len(annotations.mask) if annotations.mask is not None else 0
-            total_gt_masks += gt_count
+            # Instance data
+            instance_preds.append(
+                {
+                    "masks": torch.from_numpy(detections.mask).to(torch.bool)
+                    if num_dets > 0
+                    else torch.zeros((0, h, w), dtype=torch.bool),
+                    "labels": torch.from_numpy(detections.class_id)
+                    if num_dets > 0
+                    else torch.tensor([], dtype=torch.int64),
+                    "scores": torch.from_numpy(detections.confidence)
+                    if num_dets > 0
+                    else torch.tensor([], dtype=torch.float32),
+                }
+            )
+            instance_targets.append(
+                {
+                    "masks": torch.from_numpy(annotations.mask).to(torch.bool)
+                    if num_gts > 0
+                    else torch.zeros((0, h, w), dtype=torch.bool),
+                    "labels": torch.from_numpy(annotations.class_id)
+                    if num_gts > 0
+                    else torch.tensor([], dtype=torch.int64),
+                }
+            )
 
-            # Calculate IoU for matches (simplified)
-            if len(detections) > 0 and gt_count > 0:
-                # Count as matched if any detection exists (rough estimate)
-                matched_at_50 += min(len(detections), gt_count)
+            # Pixel data (merge all instances)
+            pred_mask = (
+                detections.mask.any(axis=0) if num_dets > 0 else np.zeros((h, w))
+            )
+            gt_mask = annotations.mask.any(axis=0) if num_gts > 0 else np.zeros((h, w))
+            pixel_preds.append(torch.from_numpy(pred_mask.astype(np.uint8)))
+            pixel_targets.append(torch.from_numpy(gt_mask.astype(np.uint8)))
 
-            # Accumulate pixel-level masks (merge all instances into single mask)
-            h, w = image.height, image.width
+        # Compute metrics
+        instance_metrics.update(instance_preds, instance_targets)
+        pixel_metrics.update(
+            torch.stack(pixel_preds).flatten(), torch.stack(pixel_targets).flatten()
+        )
 
-            # Merge prediction masks into single binary mask
-            if len(detections) > 0:
-                pred_pixel_mask = detections.mask.any(axis=0).astype(np.uint8)
-            else:
-                pred_pixel_mask = np.zeros((h, w), dtype=np.uint8)
-            all_pred_pixels.append(pred_pixel_mask)
+        results_instance = instance_metrics.compute()
+        results_pixel = pixel_metrics.compute()
 
-            # Merge GT masks into single binary mask
-            if gt_count > 0:
-                gt_pixel_mask = annotations.mask.any(axis=0).astype(np.uint8)
-            else:
-                gt_pixel_mask = np.zeros((h, w), dtype=np.uint8)
-            all_gt_pixels.append(gt_pixel_mask)
-
-            # Format predictions
-            if len(detections) > 0:
-                predictions.append(
-                    {
-                        "masks": torch.from_numpy(detections.mask).to(torch.bool),
-                        "labels": torch.from_numpy(detections.class_id),
-                        "scores": torch.from_numpy(detections.confidence),
-                    }
-                )
-            else:
-                h, w = image.height, image.width
-                predictions.append(
-                    {
-                        "masks": torch.zeros((0, h, w), dtype=torch.bool),
-                        "labels": torch.tensor([], dtype=torch.int64),
-                        "scores": torch.tensor([], dtype=torch.float32),
-                    }
-                )
-
-            # Format ground truth
-            if annotations.mask is not None and len(annotations.mask) > 0:
-                targets.append(
-                    {
-                        "masks": torch.from_numpy(annotations.mask).to(torch.bool),
-                        "labels": torch.from_numpy(annotations.class_id),
-                    }
-                )
-            else:
-                h, w = image.height, image.width
-                targets.append(
-                    {
-                        "masks": torch.zeros((0, h, w), dtype=torch.bool),
-                        "labels": torch.tensor([], dtype=torch.int64),
-                    }
-                )
-
-        # Compute metrics at both IoU thresholds
-        metric_iou50.update(predictions, targets)
-        metric_all.update(predictions, targets)
-
-        metrics_iou50 = metric_iou50.compute()
-        metrics_all = metric_all.compute()
-
-        # Combine metrics - use IoU@50 as primary, add overall metrics
+        # MetricCollection returns flattened dict
         metrics_dict = {
-            k: v.item() if torch.is_tensor(v) else v for k, v in metrics_all.items()
+            "map_50": results_instance["map"].item(),
+            "mar_50": results_instance["mar_100"].item(),
+            **{k: v.item() for k, v in results_pixel.items()},
         }
 
-        # Add IoU@50 specific metrics (most important for deployment)
-        metrics_dict["map_50"] = metrics_iou50["map"].item()
-        metrics_dict["mar_50"] = metrics_iou50["mar_100"].item()  # Recall @ IoU 50
-
-        # Add count-based metrics
-        metrics_dict["total_predictions"] = total_pred_masks
-        metrics_dict["total_ground_truth"] = total_gt_masks
-        metrics_dict["detection_rate"] = (
-            matched_at_50 / total_gt_masks if total_gt_masks > 0 else 0.0
-        )
-        metrics_dict["precision_rough"] = (
-            matched_at_50 / total_pred_masks if total_pred_masks > 0 else 0.0
-        )
-
-        # Compute pixel-level IoU (ignores instance boundaries)
-        if all_pred_pixels and all_gt_pixels:
-            # Stack all images and compute union/intersection across entire dataset
-            all_pred = np.stack(all_pred_pixels)
-            all_gt = np.stack(all_gt_pixels)
-
-            intersection = (all_pred & all_gt).sum()
-            union = (all_pred | all_gt).sum()
-
-            pixel_iou = intersection / union if union > 0 else 0.0
-            pixel_precision = (
-                intersection / all_pred.sum() if all_pred.sum() > 0 else 0.0
-            )
-            pixel_recall = intersection / all_gt.sum() if all_gt.sum() > 0 else 0.0
-            pixel_dice = (
-                2 * intersection / (all_pred.sum() + all_gt.sum())
-                if (all_pred.sum() + all_gt.sum()) > 0
-                else 0.0
-            )
-
-            metrics_dict["pixel_iou"] = pixel_iou
-            metrics_dict["pixel_precision"] = pixel_precision
-            metrics_dict["pixel_recall"] = pixel_recall
-            metrics_dict["pixel_dice"] = pixel_dice
+        # Add Dice coefficient
+        p, r = metrics_dict["pixel_precision"], metrics_dict["pixel_recall"]
+        metrics_dict["pixel_dice"] = 2 * p * r / (p + r) if (p + r) > 0 else 0.0
 
         return metrics_dict
 
@@ -288,70 +234,15 @@ def test():
     metrics = model.evaluate(test_dataset)
 
     print("\n=== Test Set Metrics ===")
-    print("\n📊 COCO-style Metrics (IoU-based):")
-    print(f"  mAP (IoU 0.50:0.95): {metrics.get('map', 0.0):.4f}")
-    print(f"  mAP@50 (IoU ≥ 0.50): {metrics.get('map_50', 0.0):.4f} ← Precision @ 50%")
-    print(f"  mAR@50 (IoU ≥ 0.50): {metrics.get('mar_50', 0.0):.4f} ← Recall @ 50%")
-    print(f"  mAP@75 (IoU ≥ 0.75): {metrics.get('map_75', 0.0):.4f}")
-    print(f"  mAR@100 (all IoUs):  {metrics.get('mar_100', 0.0):.4f}")
+    print("\n📊 Instance Metrics (IoU@50):")
+    print(f"  mAP@50: {metrics['map_50']:.4f}")
+    print(f"  mAR@50: {metrics['mar_50']:.4f}")
 
-    print("\n🔢 Detection Counts:")
-    print(f"  Total predictions:   {metrics.get('total_predictions', 0)}")
-    print(f"  Total ground truth:  {metrics.get('total_ground_truth', 0)}")
-    print(f"  Detection rate:      {metrics.get('detection_rate', 0.0):.2%}")
-    print(f"  Rough precision:     {metrics.get('precision_rough', 0.0):.2%}")
-
-    print("\n🎨 Pixel-Level Metrics (ignores instance splits):")
-    print(f"  Pixel IoU:           {metrics.get('pixel_iou', 0.0):.4f}")
-    print(f"  Pixel Dice:          {metrics.get('pixel_dice', 0.0):.4f}")
-    print(f"  Pixel Precision:     {metrics.get('pixel_precision', 0.0):.2%}")
-    print(f"  Pixel Recall:        {metrics.get('pixel_recall', 0.0):.2%}")
-
-    print("\n💡 Interpretation (for IoU@50 deployment):")
-    map_50 = metrics.get("map_50", 0.0)
-    mar_50 = metrics.get("mar_50", 0.0)
-    pixel_iou = metrics.get("pixel_iou", 0.0)
-
-    print(f"  Instance Precision (mAP@50): {map_50:.1%} of predictions are correct")
-    print(f"  Instance Recall (mAR@50):    {mar_50:.1%} of cracks are found")
-    print(f"  Pixel IoU:                   {pixel_iou:.1%} crack coverage quality")
-
-    if pixel_iou >= 0.7:
-        print("  ✅ Excellent pixel-level coverage!")
-    elif pixel_iou >= 0.5:
-        print("  ✅ Good pixel-level coverage")
-    elif pixel_iou >= 0.3:
-        print("  ⚠️  Moderate pixel coverage")
-    else:
-        print("  ❌ Poor pixel coverage")
-
-    if mar_50 >= 0.9:
-        print("  ✅ Excellent recall - catching almost all cracks!")
-    elif mar_50 >= 0.7:
-        print("  ✅ Good recall - finding most cracks")
-    elif mar_50 >= 0.5:
-        print("  ⚠️  Moderate recall - missing some cracks")
-    else:
-        print("  ❌ Low recall - missing many cracks")
-
-    # Note about pixel vs instance metrics
-    if pixel_iou > map_50 * 1.5:
-        print("\n  📝 Note: Pixel IoU is much higher than instance mAP@50.")
-        print("     This suggests your model covers cracks well but may")
-        print("     split/merge instances differently than ground truth.")
-
-    # Print per-class metrics if available
-    print("\n📋 Per-class metrics:")
-    for key, value in metrics.items():
-        if key.startswith("map_") and key not in [
-            "map",
-            "map_50",
-            "map_75",
-            "map_small",
-            "map_medium",
-            "map_large",
-        ]:
-            print(f"  {key}: {value:.4f}")
+    print("\n🎨 Pixel Metrics:")
+    print(f"  IoU:       {metrics['pixel_iou']:.4f}")
+    print(f"  Dice:      {metrics['pixel_dice']:.4f}")
+    print(f"  Precision: {metrics['pixel_precision']:.2%}")
+    print(f"  Recall:    {metrics['pixel_recall']:.2%}")
 
     # Visualize predictions
     print("\n=== Generating visualizations ===")
@@ -367,20 +258,13 @@ def test():
 
     print(f"Processing {len(test_dataset)} test images...")
 
-    for image_path in test_dataset.image_paths:
-        # Load image
-        image = Image.open(image_path).convert("RGB")
-        image_np = np.array(image)
-
-        # Get ground truth annotations
-        gt_annotations = test_dataset.annotations[image_path]
-
+    for image_path, image, gt_annotations in test_dataset:
         # Get predictions
         detections = model.predict(image)
 
         # Annotate predictions (each instance gets different color)
         pred_annotated = mask_annotator.annotate(
-            scene=image_np.copy(), detections=detections
+            scene=image.copy(), detections=detections
         )
         pred_annotated = label_annotator.annotate(
             scene=pred_annotated,
@@ -390,7 +274,7 @@ def test():
 
         # Annotate ground truth (each instance gets different color)
         gt_annotated = mask_annotator.annotate(
-            scene=image_np.copy(), detections=gt_annotations
+            scene=image.copy(), detections=gt_annotations
         )
         gt_annotated = label_annotator.annotate(
             scene=gt_annotated,
@@ -420,7 +304,7 @@ def test():
             font = ImageFont.load_default()
 
         # Add labels
-        h, w = image_np.shape[:2]
+        h, w = image.shape[:2]
         draw.text((20, 20), "Ground Truth", fill=(255, 255, 255), font=font)
         draw.text(
             (w + 20, 20),
