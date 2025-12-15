@@ -5,19 +5,12 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "transformers>=4.57.3",
     "torch>=2.0.0",
     "torchvision>=0.15.0",
     "opencv-python>=4.8.0",
     "pillow>=10.0.0",
     "numpy>=1.24.0",
-    "accelerate>=0.20.0",
-    "pycocotools>=2.0.6",
-    "scipy>=1.15.3",
-    "torchmetrics>=1.0.0",
-    "supervision>=0.20.0",
     "matplotlib>=3.5.0",
-    "scikit-image>=0.25.2",
 ]
 
 [dependency-groups]
@@ -25,6 +18,18 @@ dev = [
     "pre-commit>=4.1.0",
     "pytest>=8.3.5",
     "ruff>=0.9.9",
+]
+instance-segmentation = [
+    "transformers>=4.57.3",
+    "accelerate>=0.20.0",
+    "pycocotools>=2.0.6",
+    "scipy>=1.15.3",
+    "torchmetrics>=1.0.0",
+    "supervision>=0.20.0",
+]
+semantic-segmentation = [
+    "segmentation-models-pytorch>=0.3.0",
+    "scikit-image>=0.25.2",
 ]
 
 [tool.ruff.lint]

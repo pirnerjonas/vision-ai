@@ -28,19 +28,20 @@ jobs:
         
     - name: Set up Python
       run: uv python install 3.12
-        
-    - name: Install dependencies
-      run: uv sync
     
     - name: Run linting
-      run: uv run ruff check .
+      run: |
+        uv sync --only-group dev
+        uv run ruff check .
     
     - name: Run instance segmentation training
       run: |
+        uv sync --group instance-segmentation
         cd instance-segmentation
         uv run python train.py
     
     - name: Run semantic segmentation training
       run: |
+        uv sync --group semantic-segmentation
         cd semantic-segmentation
         uv run python train.py
