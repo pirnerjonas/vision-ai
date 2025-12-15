@@ -30,6 +30,7 @@ instance-segmentation = [
 semantic-segmentation = [
     "segmentation-models-pytorch>=0.3.0",
     "scikit-image>=0.25.2",
+    "albumentations>=2.0.8",
 ]
 
 [tool.ruff.lint]
