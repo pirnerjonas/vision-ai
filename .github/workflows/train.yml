@@ -35,7 +35,12 @@ jobs:
     - name: Run linting
       run: uv run ruff check .
     
-    - name: Run training
+    - name: Run instance segmentation training
       run: |
         cd instance-segmentation
+        uv run python train.py
+    
+    - name: Run semantic segmentation training
+      run: |
+        cd semantic-segmentation
         uv run python train.py
