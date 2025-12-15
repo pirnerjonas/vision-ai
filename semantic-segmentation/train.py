@@ -45,13 +45,13 @@ def train_epoch(model, loader, criterion, optimizer, device):
 
 @torch.inference_mode()
 def validate(model, loader, criterion, device):
-    """Validate model with detailed metrics."""
+    """Validate model using built-in smp metrics."""
     model.eval()
     total_loss = 0
-    total_iou = 0
-    total_dice = 0
-    total_precision = 0
-    total_recall = 0
+    total_tp = 0
+    total_fp = 0
+    total_fn = 0
+    total_tn = 0
 
     for images, masks in loader:
         images = images.to(device)
@@ -61,37 +61,37 @@ def validate(model, loader, criterion, device):
         loss = criterion(outputs, masks)
         total_loss += loss.item()
 
-        # Calculate metrics
-        preds = (outputs > 0.5).float()
+        # Get statistics for metrics (using smp.metrics)
+        tp, fp, fn, tn = smp.metrics.get_stats(
+            outputs,
+            masks.long(),
+            mode="binary",
+            threshold=0.5,
+        )
 
-        # IoU
-        intersection = (preds * masks).sum()
-        union = preds.sum() + masks.sum() - intersection
-        iou = (intersection + 1e-6) / (union + 1e-6)
-        total_iou += iou.item()
+        total_tp += tp.sum()
+        total_fp += fp.sum()
+        total_fn += fn.sum()
+        total_tn += tn.sum()
 
-        # Dice coefficient
-        dice = (2 * intersection + 1e-6) / (preds.sum() + masks.sum() + 1e-6)
-        total_dice += dice.item()
+    # Compute metrics using smp.metrics
+    iou = smp.metrics.iou_score(
+        total_tp, total_fp, total_fn, total_tn, reduction="micro"
+    )
+    f1 = smp.metrics.f1_score(total_tp, total_fp, total_fn, total_tn, reduction="micro")
+    precision = smp.metrics.precision(
+        total_tp, total_fp, total_fn, total_tn, reduction="micro"
+    )
+    recall = smp.metrics.recall(
+        total_tp, total_fp, total_fn, total_tn, reduction="micro"
+    )
 
-        # Precision and Recall
-        true_positive = (preds * masks).sum()
-        predicted_positive = preds.sum()
-        actual_positive = masks.sum()
-
-        precision = (true_positive + 1e-6) / (predicted_positive + 1e-6)
-        recall = (true_positive + 1e-6) / (actual_positive + 1e-6)
-
-        total_precision += precision.item()
-        total_recall += recall.item()
-
-    n = len(loader)
     return {
-        "loss": total_loss / n,
-        "iou": total_iou / n,
-        "dice": total_dice / n,
-        "precision": total_precision / n,
-        "recall": total_recall / n,
+        "loss": total_loss / len(loader),
+        "iou": iou.item(),
+        "f1": f1.item(),
+        "precision": precision.item(),
+        "recall": recall.item(),
     }
 
 
@@ -156,7 +156,7 @@ def main():
             f"train_loss={train_loss:.4f}, "
             f"val_loss={val_metrics['loss']:.4f}, "
             f"val_iou={val_metrics['iou']:.4f}, "
-            f"val_dice={val_metrics['dice']:.4f}, "
+            f"val_f1={val_metrics['f1']:.4f}, "
             f"val_precision={val_metrics['precision']:.4f}, "
             f"val_recall={val_metrics['recall']:.4f}"
         )

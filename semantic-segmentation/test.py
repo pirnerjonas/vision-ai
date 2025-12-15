@@ -145,7 +145,19 @@ def test():
             metrics = calculate_metrics(binary_mask, gt_mask)
             all_metrics.append(metrics)
 
-            # Create visualization (overlay mask on image)
+            # Create left image (original)
+            left_image = original_image.copy()
+            cv2.putText(
+                left_image,
+                "Original",
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (255, 255, 255),
+                2,
+            )
+
+            # Create right image (visualization with predictions)
             overlay = original_image.copy()
             overlay[binary_mask == 1] = [0, 255, 0]  # Green overlay for prediction
             overlay[gt_mask == 1] = [255, 0, 0]  # Red overlay for ground truth
@@ -154,25 +166,37 @@ def test():
                 255,
                 0,
             ]  # Yellow for overlap
-            result = cv2.addWeighted(original_image, 0.6, overlay, 0.4, 0)
+            right_image = cv2.addWeighted(original_image, 0.6, overlay, 0.4, 0)
 
             # Add mask contours
             contours, _ = cv2.findContours(
                 binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
             )
-            cv2.drawContours(result, contours, -1, (0, 255, 0), 2)
+            cv2.drawContours(right_image, contours, -1, (0, 255, 0), 2)
 
             # Add text with metrics
+            cv2.putText(
+                right_image,
+                "Prediction",
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (255, 255, 255),
+                2,
+            )
             text = f"IoU: {metrics['iou']:.3f} | Dice: {metrics['dice']:.3f}"
             cv2.putText(
-                result,
+                right_image,
                 text,
-                (10, 30),
+                (10, 70),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,
                 (255, 255, 255),
                 2,
             )
+
+            # Concatenate images side by side
+            result = np.concatenate([left_image, right_image], axis=1)
 
             # Save
             output_path = output_dir / f"{img_path.stem}_pred.png"
