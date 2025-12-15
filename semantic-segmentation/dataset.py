@@ -121,14 +121,24 @@ def get_visualization_transforms(augment=False, image_size=512):
 class YOLOSemanticDataset(Dataset):
     """Convert YOLO instance segmentation to semantic segmentation."""
 
-    def __init__(self, dataset_path, split="train", transform=None):
+    def __init__(
+        self, dataset_path, split="train", transform=None, image_extensions=None
+    ):
         self.dataset_path = Path(dataset_path)
         self.images_dir = self.dataset_path / "images" / split
         self.labels_dir = self.dataset_path / "labels" / split
         self.transform = transform
 
-        # Get all image files
-        self.image_files = sorted(self.images_dir.glob("*.png"))
+        # Support multiple image extensions
+        if image_extensions is None:
+            image_extensions = [".jpg", ".jpeg", ".png"]
+        self.image_extensions = image_extensions
+
+        # Get all image files with supported extensions
+        self.image_files = []
+        for ext in self.image_extensions:
+            self.image_files.extend(self.images_dir.glob(f"*{ext}"))
+        self.image_files = sorted(self.image_files)
 
         if not self.image_files:
             raise ValueError(f"No images found in {self.images_dir}")

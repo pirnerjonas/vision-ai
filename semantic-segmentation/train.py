@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 
 # ==================== CONFIGURATION ====================
 SCRIPT_DIR = Path(__file__).parent
-DATASET_PATH = (SCRIPT_DIR / "../datasets/yolo/zinnperle-segmentation").resolve()
+DATASET_PATH = (SCRIPT_DIR / "../datasets/yolo/donut").resolve()
 OUTPUT_DIR = SCRIPT_DIR / "outputs"
 
 CONFIG = {
