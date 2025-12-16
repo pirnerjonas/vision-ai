@@ -1,35 +1,19 @@
 from pathlib import Path
 
+import albumentations as A
 import cv2
 import numpy as np
 import segmentation_models_pytorch as smp
 import torch
-from albumentations import Compose, Normalize, Resize
-from albumentations.pytorch import ToTensorV2
 
 # Configuration
 CONFIG = {
-    "model_path": "./outputs/best_model.pth",
-    "dataset_path": "../datasets/yolo/zinnperle-segmentation",
+    "model_path": "./outputs/donut-segmentation",  # Path to saved model directory
+    "dataset_path": "../datasets/yolo/donut",
     "output_dir": "./predictions",
-    "encoder": "resnet34",
-    "classes": 1,
-    "activation": "sigmoid",
-    "image_size": 512,
     "threshold": 0.5,
     "split": "test",  # test split
 }
-
-
-def get_transform(image_size=512):
-    """Get test transforms."""
-    return Compose(
-        [
-            Resize(image_size, image_size),
-            Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-            ToTensorV2(),
-        ]
-    )
 
 
 def load_ground_truth_mask(label_path, img_shape):
@@ -84,29 +68,31 @@ def test():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # Load model
-    model = smp.Unet(
-        encoder_name=CONFIG["encoder"],
-        encoder_weights=None,  # Load from checkpoint
-        classes=CONFIG["classes"],
-        activation=CONFIG["activation"],
-    )
-    model.load_state_dict(torch.load(CONFIG["model_path"], map_location=device))
+    # Load model using smp.from_pretrained
+    model_path = Path(CONFIG["model_path"])
+    print(f"Loading model from {model_path}...")
+    model = smp.from_pretrained(str(model_path))
     model.to(device)
     model.eval()
-    print(f"Loaded model from {CONFIG['model_path']}")
+    print("✓ Model loaded successfully")
+
+    # Load transforms from saved model
+    transform = A.Compose.from_pretrained(str(model_path))
+    print("✓ Transforms loaded successfully")
 
     # Get test images
     images_dir = Path(CONFIG["dataset_path"]) / "images" / CONFIG["split"]
     labels_dir = Path(CONFIG["dataset_path"]) / "labels" / CONFIG["split"]
-    image_files = sorted(list(images_dir.glob("*.png")))
+
+    # Support multiple image extensions
+    image_files = []
+    for ext in ["*.jpg", "*.jpeg", "*.png", "*.JPG", "*.JPEG", "*.PNG"]:
+        image_files.extend(images_dir.glob(ext))
+    image_files = sorted(image_files)
 
     # Create output directory
     output_dir = Path(CONFIG["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Get transform
-    transform = get_transform(CONFIG["image_size"])
 
     print(f"Processing {len(image_files)} test images...")
 
