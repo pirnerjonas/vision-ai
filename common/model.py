@@ -51,10 +51,11 @@ def binary_mask_to_detections(binary_mask) -> sv.Detections:
 
 
 class SemanticSegmentationModel:
-    def __init__(self, model_type: ModelType):
+    def __init__(self, model_type: ModelType, device: str = "cuda"):
         self.model = None
         self.model_type = model_type
         self.transform = None
+        self.device = device
 
     def predict(self, image) -> sv.Detections:
         if self.model_type == ModelType.SMP:
@@ -64,11 +65,9 @@ class SemanticSegmentationModel:
         import numpy as np
         import torch
 
-        device = next(self.model.parameters()).device
-
         # Apply transforms
         transformed = self.transform(image=image)
-        image_tensor = transformed["image"].unsqueeze(0).to(device)
+        image_tensor = transformed["image"].unsqueeze(0).to(self.device)
 
         # Make prediction
         with torch.inference_mode():
@@ -92,8 +91,10 @@ class SemanticSegmentationModel:
 
         # Load transforms from saved model
         transform = A.Compose.from_pretrained(str(model_path))
+        # Load transforms from saved model
+        transform = A.Compose.from_pretrained(str(model_path))
 
-        instance = cls(ModelType.SMP)
+        instance = cls(ModelType.SMP, device=device)
         instance.model = model
         instance.transform = transform
         return instance

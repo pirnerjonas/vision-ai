@@ -60,3 +60,8 @@ jobs:
       run: |
         cd ${{ matrix.model }}
         uv run python train.py
+    
+    - name: Run testing
+      run: |
+        cd ${{ matrix.model }}
+        uv run python test.py
