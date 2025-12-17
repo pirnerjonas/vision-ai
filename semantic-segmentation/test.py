@@ -1,18 +1,21 @@
+import sys
 from pathlib import Path
 
-import albumentations as A
+sys.path.append(str(Path(__file__).parent.parent))
+
 import cv2
 import numpy as np
-import segmentation_models_pytorch as smp
-import torch
+
+from common.model import SemanticSegmentationModel
 
 # Configuration
+# Note: Update these paths to match your training configuration
 CONFIG = {
-    "model_path": "./outputs/donut-segmentation",  # Path to saved model directory
-    "dataset_path": "../datasets/yolo/donut",
+    "model_path": "./outputs/crack-segmentation",  # Path to saved model directory
+    "dataset_path": "../datasets/yolo/crack",
     "output_dir": "./predictions",
     "threshold": 0.5,
-    "split": "test",  # test split
+    "split": "test",
 }
 
 
@@ -65,20 +68,14 @@ def calculate_metrics(pred_mask, gt_mask):
 
 
 def test():
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = "cuda" if __import__("torch").cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
-    # Load model using smp.from_pretrained
+    # Load model using SemanticSegmentationModel
     model_path = Path(CONFIG["model_path"])
     print(f"Loading model from {model_path}...")
-    model = smp.from_pretrained(str(model_path))
-    model.to(device)
-    model.eval()
+    model = SemanticSegmentationModel.from_smp(model_path, device=device)
     print("✓ Model loaded successfully")
-
-    # Load transforms from saved model
-    transform = A.Compose.from_pretrained(str(model_path))
-    print("✓ Transforms loaded successfully")
 
     # Get test images
     images_dir = Path(CONFIG["dataset_path"]) / "images" / CONFIG["split"]
@@ -99,96 +96,95 @@ def test():
     # Metrics accumulator
     all_metrics = []
 
-    with torch.inference_mode():
-        for img_path in image_files:
-            # Load image
-            image = cv2.imread(str(img_path))
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            original_image = image.copy()
-            original_size = image.shape[:2]
+    for img_path in image_files:
+        # Load image
+        image = cv2.imread(str(img_path))
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        original_image = image.copy()
+        original_size = image.shape[:2]
 
-            # Load ground truth mask
-            label_path = labels_dir / (img_path.stem + ".txt")
-            gt_mask = load_ground_truth_mask(label_path, image.shape)
+        # Load ground truth mask
+        label_path = labels_dir / (img_path.stem + ".txt")
+        gt_mask = load_ground_truth_mask(label_path, image.shape)
 
-            # Preprocess
-            transformed = transform(image=image)
-            input_tensor = transformed["image"].unsqueeze(0).to(device)
+        # Predict using model
+        detections = model.predict(image)
 
-            # Predict
-            output = model(input_tensor)
-            mask = output.squeeze().cpu().numpy()
+        # Merge all instance masks back into a single semantic mask
+        if len(detections) > 0 and detections.mask is not None:
+            binary_mask = np.any(detections.mask, axis=0).astype(np.uint8)
+        else:
+            binary_mask = np.zeros(image.shape[:2], dtype=np.uint8)
 
-            # Threshold and resize to original size
-            binary_mask = (mask > CONFIG["threshold"]).astype(np.uint8)
-            binary_mask = cv2.resize(
-                binary_mask,
-                (original_size[1], original_size[0]),
-                interpolation=cv2.INTER_NEAREST,
-            )
+        # Resize to original size
+        binary_mask = cv2.resize(
+            binary_mask,
+            (original_size[1], original_size[0]),
+            interpolation=cv2.INTER_NEAREST,
+        )
 
-            # Calculate metrics
-            metrics = calculate_metrics(binary_mask, gt_mask)
-            all_metrics.append(metrics)
+        # Calculate metrics
+        metrics = calculate_metrics(binary_mask, gt_mask)
+        all_metrics.append(metrics)
 
-            # Create left image (original)
-            left_image = original_image.copy()
-            cv2.putText(
-                left_image,
-                "Original",
-                (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1,
-                (255, 255, 255),
-                2,
-            )
+        # Create left image (original)
+        left_image = original_image.copy()
+        cv2.putText(
+            left_image,
+            "Original",
+            (10, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (255, 255, 255),
+            2,
+        )
 
-            # Create right image (visualization with predictions)
-            overlay = original_image.copy()
-            overlay[binary_mask == 1] = [0, 255, 0]  # Green overlay for prediction
-            overlay[gt_mask == 1] = [255, 0, 0]  # Red overlay for ground truth
-            overlay[(binary_mask == 1) & (gt_mask == 1)] = [
-                255,
-                255,
-                0,
-            ]  # Yellow for overlap
-            right_image = cv2.addWeighted(original_image, 0.6, overlay, 0.4, 0)
+        # Create right image (visualization with predictions)
+        overlay = original_image.copy()
+        overlay[binary_mask == 1] = [0, 255, 0]  # Green overlay for prediction
+        overlay[gt_mask == 1] = [255, 0, 0]  # Red overlay for ground truth
+        overlay[(binary_mask == 1) & (gt_mask == 1)] = [
+            255,
+            255,
+            0,
+        ]  # Yellow for overlap
+        right_image = cv2.addWeighted(original_image, 0.6, overlay, 0.4, 0)
 
-            # Add mask contours
-            contours, _ = cv2.findContours(
-                binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-            )
-            cv2.drawContours(right_image, contours, -1, (0, 255, 0), 2)
+        # Add mask contours
+        contours, _ = cv2.findContours(
+            binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+        cv2.drawContours(right_image, contours, -1, (0, 255, 0), 2)
 
-            # Add text with metrics
-            cv2.putText(
-                right_image,
-                "Prediction",
-                (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1,
-                (255, 255, 255),
-                2,
-            )
-            text = f"IoU: {metrics['iou']:.3f} | Dice: {metrics['dice']:.3f}"
-            cv2.putText(
-                right_image,
-                text,
-                (10, 70),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (255, 255, 255),
-                2,
-            )
+        # Add text with metrics
+        cv2.putText(
+            right_image,
+            "Prediction",
+            (10, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (255, 255, 255),
+            2,
+        )
+        text = f"IoU: {metrics['iou']:.3f} | Dice: {metrics['dice']:.3f}"
+        cv2.putText(
+            right_image,
+            text,
+            (10, 70),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (255, 255, 255),
+            2,
+        )
 
-            # Concatenate images side by side
-            result = np.concatenate([left_image, right_image], axis=1)
+        # Concatenate images side by side
+        result = np.concatenate([left_image, right_image], axis=1)
 
-            # Save
-            output_path = output_dir / f"{img_path.stem}_pred.png"
-            result_bgr = cv2.cvtColor(result, cv2.COLOR_RGB2BGR)
-            cv2.imwrite(str(output_path), result_bgr)
-            print(f"Saved: {output_path} | IoU: {metrics['iou']:.3f}")
+        # Save
+        output_path = output_dir / f"{img_path.stem}_pred.png"
+        result_bgr = cv2.cvtColor(result, cv2.COLOR_RGB2BGR)
+        cv2.imwrite(str(output_path), result_bgr)
+        print(f"Saved: {output_path} | IoU: {metrics['iou']:.3f}")
 
     # Calculate and print average metrics
     avg_metrics = {
