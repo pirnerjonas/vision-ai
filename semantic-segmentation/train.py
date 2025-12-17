@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 SCRIPT_DIR = Path(__file__).parent
 DATASET_PATH = (SCRIPT_DIR / "../datasets/yolo/donut").resolve()
 OUTPUT_DIR = SCRIPT_DIR / "outputs"
+MODEL_NAME = "donut-segmentation"  # Name for saved model
 
 CONFIG = {
     "encoder": "resnet34",
@@ -16,9 +17,10 @@ CONFIG = {
     "classes": 1,
     "activation": "sigmoid",
     "learning_rate": 0.0001,
-    "epochs": 2,
+    "epochs": 100,
     "batch_size": 8,
     "image_size": 512,
+    "dataset_name": "YOLO Donut Dataset",
 }
 # =======================================================
 
@@ -100,8 +102,10 @@ def main():
     print(f"Using device: {device}")
     print(f"Dataset path: {DATASET_PATH}")
 
-    # Create output directory
+    # Create output directories
     OUTPUT_DIR.mkdir(exist_ok=True)
+    model_save_dir = OUTPUT_DIR / MODEL_NAME
+    model_save_dir.mkdir(exist_ok=True)
 
     # Load datasets (no train/val split, using all data for training)
     train_dataset = YOLOSemanticDataset(
@@ -147,6 +151,7 @@ def main():
 
     # Training loop
     best_iou = 0
+    best_metrics = {}
     for epoch in range(CONFIG["epochs"]):
         train_loss = train_epoch(model, train_loader, criterion, optimizer, device)
         val_metrics = validate(model, val_loader, criterion, device)
@@ -161,16 +166,30 @@ def main():
             f"val_recall={val_metrics['recall']:.4f}"
         )
 
-        # Save best model
+        # Track best model
         if val_metrics["iou"] > best_iou:
             best_iou = val_metrics["iou"]
-            torch.save(model.state_dict(), OUTPUT_DIR / "best_model.pth")
-            print(f"✓ Saved best model with IoU: {best_iou:.4f}")
+            best_metrics = val_metrics.copy()
+            print(f"✓ New best model with IoU: {best_iou:.4f}")
 
-    # Save final model
-    torch.save(model.state_dict(), OUTPUT_DIR / "final_model.pth")
+    # Save model using smp's save_pretrained for easy loading
+    print(f"\nSaving model to {model_save_dir}...")
+    model.save_pretrained(
+        save_directory=str(model_save_dir),
+        push_to_hub=False,
+        metrics=best_metrics,
+        dataset=CONFIG["dataset_name"],
+    )
+
+    # Save transforms for inference
+    val_transform = get_transforms("valid", CONFIG["image_size"])
+    val_transform.save_pretrained(str(model_save_dir), push_to_hub=False)
+
     print(f"\nTraining completed! Best IoU: {best_iou:.4f}")
-    print(f"Models saved to {OUTPUT_DIR}")
+    print(f"Model and transforms saved to {model_save_dir}")
+    print("\nTo load the model:")
+    print(f"  model = smp.from_pretrained('{model_save_dir}/')")
+    print(f"  transform = A.Compose.from_pretrained('{model_save_dir}/')")
 
 
 if __name__ == "__main__":
