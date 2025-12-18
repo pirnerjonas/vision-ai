@@ -61,6 +61,63 @@ class SemanticSegmentationModel:
         if self.model_type == ModelType.SMP:
             return self._predict_smp(image)
 
+    def evaluate(self, dataset: sv.DetectionDataset) -> dict:
+        """Evaluate model on a dataset using torchmetrics IoU.
+
+        Args:
+            dataset: supervision DetectionDataset
+
+        Returns:
+            Dictionary with IoU metrics
+        """
+        import cv2
+        import numpy as np
+        import torch
+        from torchmetrics.classification import BinaryJaccardIndex
+
+        metric = BinaryJaccardIndex().to(self.device)
+
+        for _, image, annotations in dataset:
+            gt_mask = annotations.mask
+
+            # Skip if no ground truth mask
+            if gt_mask is None or len(gt_mask) == 0:
+                continue
+
+            # Merge all ground truth masks into single binary mask
+            gt_binary = gt_mask.any(axis=0)
+
+            # Get prediction
+            detections = self.predict(image)
+
+            # Merge all predicted masks into single binary mask
+            if len(detections) > 0 and detections.mask is not None:
+                pred_binary = detections.mask.any(axis=0)
+            else:
+                pred_binary = np.zeros(gt_binary.shape, dtype=bool)
+
+            # Resize prediction to match ground truth shape
+            if pred_binary.shape != gt_binary.shape:
+                import cv2
+
+                pred_binary = cv2.resize(
+                    pred_binary.astype(np.uint8),
+                    (gt_binary.shape[1], gt_binary.shape[0]),
+                    interpolation=cv2.INTER_NEAREST,
+                ).astype(bool)
+
+            # Convert to torch tensors
+            gt_tensor = torch.from_numpy(gt_binary).to(self.device)
+            pred_tensor = torch.from_numpy(pred_binary).to(self.device)
+
+            # Update metric
+            metric.update(pred_tensor, gt_tensor)
+
+        # Compute final IoU
+        iou = metric.compute().item()
+
+        return {"iou": iou}
+
     def _predict_smp(self, image) -> sv.Detections:
         import numpy as np
         import torch

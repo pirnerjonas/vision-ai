@@ -17,7 +17,7 @@ CONFIG = {
     "classes": 1,
     "activation": "sigmoid",
     "learning_rate": 0.0001,
-    "epochs": 100,
+    "epochs": 2,
     "batch_size": 8,
     "image_size": 512,
     "dataset_name": "YOLO Crack Dataset",
