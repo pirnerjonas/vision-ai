@@ -26,6 +26,7 @@ instance-segmentation = [
     "accelerate>=0.20.0",
     "pycocotools>=2.0.6",
     "scipy>=1.15.3",
+    "opencv-contrib-python>=4.10.0",  # For supervision compatibility
 ]
 semantic-segmentation = [
     "segmentation-models-pytorch>=0.3.0",

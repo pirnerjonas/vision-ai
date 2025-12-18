@@ -1887,6 +1887,7 @@ dev = [
 ]
 instance-segmentation = [
     { name = "accelerate" },
+    { name = "opencv-contrib-python" },
     { name = "pycocotools" },
     { name = "scipy" },
     { name = "transformers" },
@@ -1918,6 +1919,7 @@ dev = [
 ]
 instance-segmentation = [
     { name = "accelerate", specifier = ">=0.20.0" },
+    { name = "opencv-contrib-python", specifier = ">=4.10.0" },
     { name = "pycocotools", specifier = ">=2.0.6" },
     { name = "scipy", specifier = ">=1.15.3" },
     { name = "transformers", specifier = ">=4.57.3" },

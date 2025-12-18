@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 import supervision as sv
 
-from common.model import SemanticSegmentationModel
+from common.model import VisionModel
 
 # Configuration
 # Note: Update these paths to match your training configuration
@@ -24,10 +24,10 @@ def test():
     device = "cuda" if __import__("torch").cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
-    # Load model using SemanticSegmentationModel
+    # Load model using VisionModel
     model_path = Path(CONFIG["model_path"])
     print(f"Loading model from {model_path}...")
-    model = SemanticSegmentationModel.from_smp(model_path, device=device)
+    model = VisionModel.from_smp(model_path, model_type="semantic", device=device)
     print("✓ Model loaded successfully")
 
     # Load dataset
