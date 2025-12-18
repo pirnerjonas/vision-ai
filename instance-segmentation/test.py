@@ -3,9 +3,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent))
 
-import numpy as np
 import supervision as sv
-from PIL import Image, ImageDraw, ImageFont
 
 from common.model import VisionModel
 
@@ -55,67 +53,8 @@ def test():
     # Optional: Generate predictions for visualization
     output_dir = Path(CONFIG["output_dir"])
     if output_dir:
-        output_dir.mkdir(parents=True, exist_ok=True)
         print("\nGenerating visualizations...")
-
-        # Annotators for visualization
-        mask_annotator = sv.MaskAnnotator(
-            color_lookup=sv.ColorLookup.INDEX, opacity=0.5
-        )
-        label_annotator = sv.LabelAnnotator(text_position=sv.Position.CENTER)
-
-        for image_path, image, annotations in dataset:
-            # Get predictions
-            detections = model.predict(image)
-
-            # Annotate predictions (each instance gets different color)
-            pred_annotated = mask_annotator.annotate(
-                scene=image.copy(), detections=detections
-            )
-            pred_annotated = label_annotator.annotate(
-                scene=pred_annotated,
-                detections=detections,
-                labels=[f"P{i}" for i in range(len(detections))],
-            )
-
-            # Annotate ground truth (each instance gets different color)
-            gt_annotated = mask_annotator.annotate(
-                scene=image.copy(), detections=annotations
-            )
-            gt_annotated = label_annotator.annotate(
-                scene=gt_annotated,
-                detections=annotations,
-                labels=[f"GT{i}" for i in range(len(annotations))],
-            )
-
-            # Create side-by-side comparison
-            comparison = np.hstack([gt_annotated, pred_annotated])
-            comparison_pil = Image.fromarray(comparison)
-            draw = ImageDraw.Draw(comparison_pil)
-
-            # Try to use a font, fallback to default
-            try:
-                font = ImageFont.truetype(
-                    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24
-                )
-            except Exception:
-                font = ImageFont.load_default()
-
-            # Add labels
-            h, w = image.shape[:2]
-            draw.text((20, 20), "Ground Truth", fill=(255, 255, 255), font=font)
-            draw.text(
-                (w + 20, 20),
-                f"Predictions ({len(detections)})",
-                fill=(255, 255, 255),
-                font=font,
-            )
-
-            # Save
-            img_name = Path(image_path).stem
-            output_path = output_dir / f"{img_name}_comparison.jpg"
-            comparison_pil.save(output_path)
-
+        model.visualize_predictions(dataset, output_dir)
         print(f"✓ Predictions saved to {output_dir}")
 
 

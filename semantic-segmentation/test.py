@@ -3,8 +3,6 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent))
 
-import cv2
-import numpy as np
 import supervision as sv
 
 from common.model import VisionModel
@@ -57,53 +55,8 @@ def test():
     # Optional: Generate predictions for visualization
     output_dir = Path(CONFIG["output_dir"])
     if output_dir:
-        output_dir.mkdir(parents=True, exist_ok=True)
         print("\nGenerating visualizations...")
-
-        for image_path, image, annotations in dataset:
-            # Get prediction
-            detections = model.predict(image)
-
-            # Merge instance masks to semantic mask
-            if len(detections) > 0 and detections.mask is not None:
-                pred_mask = np.any(detections.mask, axis=0).astype(np.uint8)
-            else:
-                pred_mask = np.zeros(image.shape[:2], dtype=np.uint8)
-
-            # Resize prediction to match original image size
-            if pred_mask.shape != image.shape[:2]:
-                pred_mask = cv2.resize(
-                    pred_mask,
-                    (image.shape[1], image.shape[0]),
-                    interpolation=cv2.INTER_NEAREST,
-                )
-
-            # Get ground truth mask
-            if annotations.mask is not None and len(annotations.mask) > 0:
-                gt_mask = np.any(annotations.mask, axis=0).astype(np.uint8)
-            else:
-                gt_mask = np.zeros(image.shape[:2], dtype=np.uint8)
-
-            # Create visualization
-            overlay = image.copy()
-            overlay[pred_mask == 1] = [0, 255, 0]  # Green for prediction
-            overlay[gt_mask == 1] = [255, 0, 0]  # Red for ground truth
-            overlay[(pred_mask == 1) & (gt_mask == 1)] = [255, 255, 0]  # Yellow overlap
-
-            result = cv2.addWeighted(image, 0.6, overlay, 0.4, 0)
-
-            # Add contours
-            contours, _ = cv2.findContours(
-                pred_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-            )
-            cv2.drawContours(result, contours, -1, (0, 255, 0), 2)
-
-            # Save
-            img_name = Path(image_path).stem
-            output_path = output_dir / f"{img_name}_pred.png"
-            result_bgr = cv2.cvtColor(result, cv2.COLOR_RGB2BGR)
-            cv2.imwrite(str(output_path), result_bgr)
-
+        model.visualize_predictions(dataset, output_dir)
         print(f"✓ Predictions saved to {output_dir}")
 
 

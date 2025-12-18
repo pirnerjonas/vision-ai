@@ -1,4 +1,5 @@
 from enum import Enum
+from pathlib import Path
 from typing import Literal
 
 import numpy as np
@@ -212,6 +213,57 @@ class VisionModel:
             )
 
         return binary_mask
+
+    def visualize_predictions(
+        self, dataset, output_dir: str | Path, max_images: int | None = None
+    ):
+        """Visualize predictions for dataset images."""
+        import supervision as sv
+        from PIL import Image, ImageDraw, ImageFont
+
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        mask_annotator = sv.MaskAnnotator(
+            color_lookup=sv.ColorLookup.INDEX, opacity=0.5
+        )
+        label_annotator = sv.LabelAnnotator(text_position=sv.Position.CENTER)
+        font = ImageFont.truetype(
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24
+        )
+
+        for idx, (image_path, image, annotations) in enumerate(dataset):
+            if max_images and idx >= max_images:
+                break
+
+            detections = self.predict(image)
+
+            # Annotate predictions and ground truth
+            pred_annotated = label_annotator.annotate(
+                mask_annotator.annotate(image.copy(), detections),
+                detections,
+                [f"P{i}" for i in range(len(detections))],
+            )
+            gt_annotated = label_annotator.annotate(
+                mask_annotator.annotate(image.copy(), annotations),
+                annotations,
+                [f"GT{i}" for i in range(len(annotations))],
+            )
+
+            # Create side-by-side comparison with labels
+            comparison_pil = Image.fromarray(np.hstack([gt_annotated, pred_annotated]))
+            draw = ImageDraw.Draw(comparison_pil)
+            h, w = image.shape[:2]
+            draw.text((20, 20), "Ground Truth", fill=(255, 255, 255), font=font)
+            draw.text(
+                (w + 20, 20),
+                f"Predictions ({len(detections)})",
+                fill=(255, 255, 255),
+                font=font,
+            )
+
+            output_path = output_dir / f"{Path(image_path).stem}_comparison.jpg"
+            comparison_pil.save(output_path)
 
     def _smp_predict_impl(self, image: np.ndarray) -> np.ndarray:
         """SMP prediction implementation - returns semantic binary mask."""
