@@ -7,9 +7,9 @@ from torch.utils.data import DataLoader
 
 # ==================== CONFIGURATION ====================
 SCRIPT_DIR = Path(__file__).parent
-DATASET_PATH = (SCRIPT_DIR / "../datasets/yolo/donut").resolve()
+DATASET_PATH = (SCRIPT_DIR / "../datasets/yolo/crack").resolve()
 OUTPUT_DIR = SCRIPT_DIR / "outputs"
-MODEL_NAME = "donut-segmentation"  # Name for saved model
+MODEL_NAME = "crack-segmentation"  # Name for saved model
 
 CONFIG = {
     "encoder": "resnet34",
@@ -17,10 +17,10 @@ CONFIG = {
     "classes": 1,
     "activation": "sigmoid",
     "learning_rate": 0.0001,
-    "epochs": 100,
+    "epochs": 2,
     "batch_size": 8,
     "image_size": 512,
-    "dataset_name": "YOLO Donut Dataset",
+    "dataset_name": "YOLO Crack Dataset",
 }
 # =======================================================
 

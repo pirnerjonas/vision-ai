@@ -7,10 +7,12 @@ requires-python = ">=3.12"
 dependencies = [
     "torch>=2.0.0",
     "torchvision>=0.15.0",
-    "opencv-python>=4.8.0",
     "pillow>=10.0.0",
     "numpy>=1.24.0",
     "matplotlib>=3.5.0",
+    "supervision>=0.20.0",
+    "torchmetrics>=1.0.0",
+    "opencv-python>=4.10.0",
 ]
 
 [dependency-groups]
@@ -24,13 +26,13 @@ instance-segmentation = [
     "accelerate>=0.20.0",
     "pycocotools>=2.0.6",
     "scipy>=1.15.3",
-    "torchmetrics>=1.0.0",
-    "supervision>=0.20.0",
+    "opencv-contrib-python>=4.10.0",  # For supervision compatibility
 ]
 semantic-segmentation = [
     "segmentation-models-pytorch>=0.3.0",
     "scikit-image>=0.25.2",
     "albumentations>=2.0.8",
+    "opencv-contrib-python>=4.10.0",  # Provides everything opencv-python-headless needs
 ]
 
 [tool.ruff.lint]
