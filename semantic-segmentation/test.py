@@ -5,15 +5,13 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 import supervision as sv
 
-from common.model import VisionModel
+from common.model import SmpSemanticSegmentationModel, evaluate, visualize_predictions
 
 # Configuration
-# Note: Update these paths to match your training configuration
 CONFIG = {
     "model_path": "./outputs/crack-segmentation",  # Path to saved model directory
     "dataset_path": "../datasets/yolo/crack",
     "output_dir": "./predictions",
-    "threshold": 0.5,
     "split": "test",
 }
 
@@ -22,11 +20,11 @@ def test():
     device = "cuda" if __import__("torch").cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
-    # Load model using VisionModel
+    # Load model
     model_path = Path(CONFIG["model_path"])
     print(f"Loading model from {model_path}...")
-    model = VisionModel.from_smp(model_path, model_type="semantic", device=device)
-    print("✓ Model loaded successfully")
+    model = SmpSemanticSegmentationModel(model_path, device=device)
+    print(f"✓ Model loaded: {model.name}")
 
     # Load dataset
     dataset_path = Path(CONFIG["dataset_path"])
@@ -36,27 +34,26 @@ def test():
     dataset = sv.DetectionDataset.from_yolo(
         images_directory_path=str(dataset_path / "images" / split),
         annotations_directory_path=str(dataset_path / "labels" / split),
-        data_yaml_path=str(dataset_path / "data.yaml"),
+        data_yaml_path=str(dataset_path / "dataset.yaml"),
         force_masks=True,
     )
     print(f"✓ Loaded {len(dataset)} images")
 
-    # Evaluate model using high-level function
+    # Evaluate
     print(f"\nEvaluating model on {split} set...")
-    metrics = model.evaluate(dataset)
+    metrics = evaluate(model, dataset, device=device)
 
-    # Print results
     print(f"\n{'=' * 60}")
     print(f"Test Set Results ({len(dataset)} images):")
     print(f"{'=' * 60}")
     print(f"IoU: {metrics['iou']:.4f}")
     print(f"{'=' * 60}")
 
-    # Optional: Generate predictions for visualization
+    # Visualize
     output_dir = Path(CONFIG["output_dir"])
     if output_dir:
         print("\nGenerating visualizations...")
-        model.visualize_predictions(dataset, output_dir)
+        visualize_predictions(model, dataset, output_dir)
         print(f"✓ Predictions saved to {output_dir}")
 
 
