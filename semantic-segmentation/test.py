@@ -31,10 +31,14 @@ def test():
     split = CONFIG["split"]
 
     print(f"Loading {split} dataset from {dataset_path}...")
+    # Support both dataset.yaml and data.yaml naming conventions
+    yaml_path = dataset_path / "dataset.yaml"
+    if not yaml_path.exists():
+        yaml_path = dataset_path / "data.yaml"
     dataset = sv.DetectionDataset.from_yolo(
         images_directory_path=str(dataset_path / "images" / split),
         annotations_directory_path=str(dataset_path / "labels" / split),
-        data_yaml_path=str(dataset_path / "dataset.yaml"),
+        data_yaml_path=str(yaml_path),
         force_masks=True,
     )
     print(f"✓ Loaded {len(dataset)} images")
