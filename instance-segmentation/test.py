@@ -14,7 +14,7 @@ from common.model import (
 # Configuration
 CONFIG = {
     "model_path": "./outputs",
-    "dataset_path": "../datasets/yolo/zinnperle-segmentation",
+    "dataset_path": "../datasets/yolo/crack",
     "output_dir": "./predictions",
     "split": "test",
 }
